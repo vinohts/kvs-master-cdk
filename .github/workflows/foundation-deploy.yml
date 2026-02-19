@@ -1,4 +1,4 @@
-name: Deploy Foundation
+name: Deploy Infra Foundation
 
   # Trigger manually from GitHub Actions UI
 on:
