@@ -8,9 +8,13 @@ export class NetworkStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Create VPC
-    this.vpc = new ec2.Vpc(this, 'KvsDevVpc', {
-      vpcName: 'kvs-dev-vpc-sg',
+    const project = 'kvs';
+    const envName = 'dev';
+    const region = 'sg'; // Singapore
+
+    // 1️⃣ Create VPC
+    this.vpc = new ec2.Vpc(this, 'Vpc', {
+      vpcName: `${project}-${envName}-vpc-${region}`,
       ipAddresses: ec2.IpAddresses.cidr('10.10.0.0/16'),
       maxAzs: 3,
       natGateways: 0,
@@ -24,24 +28,13 @@ export class NetworkStack extends cdk.Stack {
           name: 'private',
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
-        }
+        },
       ],
     });
 
-    // Enterprise-style route tables
-    const publicRt = new ec2.CfnRouteTable(this, 'PublicRT', {
-      vpcId: this.vpc.vpcId,
-      tags: [{ key: 'Name', value: 'kvs-dev-vpc-sg-public-rt' }],
-    });
-
-    const privateRt = new ec2.CfnRouteTable(this, 'PrivateRT', {
-      vpcId: this.vpc.vpcId,
-      tags: [{ key: 'Name', value: 'kvs-dev-vpc-sg-private-rt' }],
-    });
-
-    // Attach IGW to public route table
+    // 2️⃣ Create IGW
     const igw = new ec2.CfnInternetGateway(this, 'IGW', {
-      tags: [{ key: 'Name', value: 'kvs-dev-igw-sg' }],
+      tags: [{ key: 'Name', value: `${project}-${envName}-igw-${region}` }],
     });
 
     new ec2.CfnVPCGatewayAttachment(this, 'IGWAttachment', {
@@ -49,33 +42,47 @@ export class NetworkStack extends cdk.Stack {
       internetGatewayId: igw.ref,
     });
 
-    new ec2.CfnRoute(this, 'PublicRoute', {
+    // 3️⃣ Route Tables
+    const publicRt = new ec2.CfnRouteTable(this, 'PublicRT', {
+      vpcId: this.vpc.vpcId,
+      tags: [{ key: 'Name', value: `${project}-${envName}-pub-rt-${region}` }],
+    });
+
+    const privateRt = new ec2.CfnRouteTable(this, 'PrivateRT', {
+      vpcId: this.vpc.vpcId,
+      tags: [{ key: 'Name', value: `${project}-${envName}-pvt-rt-${region}` }],
+    });
+
+    // 4️⃣ Public Route
+    new ec2.CfnRoute(this, 'PublicDefaultRoute', {
       routeTableId: publicRt.ref,
       destinationCidrBlock: '0.0.0.0/0',
       gatewayId: igw.ref,
     });
 
-    // Associate public subnets to public RT
+    // 5️⃣ Associate Public Subnets
     this.vpc.publicSubnets.forEach((subnet, i) => {
-      new ec2.CfnSubnetRouteTableAssociation(this, `PublicSubnetRTAssoc${i + 1}`, {
+      new ec2.CfnSubnetRouteTableAssociation(this, `PubSub${i + 1}RTAssoc`, {
         subnetId: subnet.subnetId,
         routeTableId: publicRt.ref,
       });
     });
 
-    // Associate private subnets to private RT
+    // 6️⃣ Associate Private Subnets
     this.vpc.privateSubnets.forEach((subnet, i) => {
-      new ec2.CfnSubnetRouteTableAssociation(this, `PrivateSubnetRTAssoc${i + 1}`, {
+      new ec2.CfnSubnetRouteTableAssociation(this, `PvtSub${i + 1}RTAssoc`, {
         subnetId: subnet.subnetId,
         routeTableId: privateRt.ref,
       });
     });
 
-    // Outputs
+    // 7️⃣ Outputs
     new cdk.CfnOutput(this, 'VpcId', { value: this.vpc.vpcId });
+
     this.vpc.publicSubnets.forEach((subnet, i) => {
       new cdk.CfnOutput(this, `PublicSubnet${i + 1}`, { value: subnet.subnetId });
     });
+
     this.vpc.privateSubnets.forEach((subnet, i) => {
       new cdk.CfnOutput(this, `PrivateSubnet${i + 1}`, { value: subnet.subnetId });
     });
