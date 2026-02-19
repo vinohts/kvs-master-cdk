@@ -1,12 +1,12 @@
-name: Deploy Foundation
+name: Destroy Foundation Stack
 
-  # Trigger manually from GitHub Actions UI
+# Trigger manually from GitHub Actions UI
 on:
- workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-  deploy-foundation:
-    name: Deploy Foundation Stack
+  destroy-foundation:
+    name: Destroy Foundation Stack
     runs-on: ubuntu-latest
 
     permissions:
@@ -15,10 +15,10 @@ jobs:
 
     steps:
       # 1️⃣ Checkout the repo
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2️⃣ Configure AWS credentials via OIDC
+      # 2️⃣ Configure AWS credentials via OIDC role
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -37,18 +37,12 @@ jobs:
           cd foundation
           npm ci
 
-      # 5️⃣ Install CDK
+      # 5️⃣ Install AWS CDK
       - name: Install CDK
         run: npm install -g aws-cdk
 
-      # 6️⃣ Synthesize CDK template (optional check)
-      - name: CDK Synth
+      # 6️⃣ Destroy the stack
+      - name: CDK Destroy
         run: |
           cd foundation
-          cdk synth
-
-      # 7️⃣ Deploy CDK stack
-      - name: CDK Deploy
-        run: |
-          cd foundation
-          cdk deploy --require-approval never
+          cdk destroy NetworkStack --force
