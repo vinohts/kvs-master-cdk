@@ -1,0 +1,56 @@
+name: Deploy Foundation
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-foundation:
+    name: Deploy Foundation Stack
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      # 1️⃣ Checkout the repo
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2️⃣ Configure AWS credentials via OIDC
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::758890598841:role/GitHubActions-CDK-Deploy-Role
+          aws-region: ap-southeast-1
+
+      # 3️⃣ Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+
+      # 4️⃣ Install dependencies
+      - name: Install dependencies
+        run: |
+          cd foundation
+          npm ci
+
+      # 5️⃣ Install CDK
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      # 6️⃣ Synthesize CDK template (optional check)
+      - name: CDK Synth
+        run: |
+          cd foundation
+          cdk synth
+
+      # 7️⃣ Deploy CDK stack
+      - name: CDK Deploy
+        run: |
+          cd foundation
+          cdk deploy --require-approval never
