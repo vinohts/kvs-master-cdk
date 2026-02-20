@@ -3,89 +3,98 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 
 export class NetworkStack extends cdk.Stack {
-  public readonly vpc: ec2.Vpc;
-
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     const project = 'kvs';
-    const envName = 'dev';
-    const regionCode = 'sg';
+    const env = 'dev';
+    const region = 'sg';
 
-    // ✅ 1. Create VPC WITHOUT automatic subnet route tables
-    this.vpc = new ec2.Vpc(this, 'Vpc', {
-      vpcName: `${project}-${envName}-vpc-${regionCode}`,
-      ipAddresses: ec2.IpAddresses.cidr('10.10.0.0/16'),
-      maxAzs: 3,
-      natGateways: 0,
-      subnetConfiguration: [
-        {
-          name: 'public',
-          subnetType: ec2.SubnetType.PUBLIC,
-          cidrMask: 24,
-        },
-        {
-          name: 'private',
-          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-          cidrMask: 24,
-        },
-      ],
+    // ---------------------------
+    // 1️⃣ VPC
+    // ---------------------------
+    const vpc = new ec2.CfnVPC(this, 'VPC', {
+      cidrBlock: '10.10.0.0/16',
+      tags: [{ key: 'Name', value: `${project}-${env}-vpc-${region}` }],
     });
 
-    // Get automatically created IGW
-    const igw = this.vpc.node
-      .findChild('IGW') as ec2.CfnInternetGateway;
-
-    // ✅ 2. Create ONE Public Route Table
-    const publicRt = new ec2.CfnRouteTable(this, 'PublicRouteTable', {
-      vpcId: this.vpc.vpcId,
-      tags: [
-        { key: 'Name', value: `${project}-${envName}-public-rt-${regionCode}` },
-      ],
+    // ---------------------------
+    // 2️⃣ Internet Gateway
+    // ---------------------------
+    const igw = new ec2.CfnInternetGateway(this, 'IGW', {
+      tags: [{ key: 'Name', value: `${project}-${env}-igw-${region}` }],
     });
 
-    // Default route to IGW
+    new ec2.CfnVPCGatewayAttachment(this, 'IGWAttachment', {
+      vpcId: vpc.ref,
+      internetGatewayId: igw.ref,
+    });
+
+    // ---------------------------
+    // 3️⃣ Route Tables (ONLY 2)
+    // ---------------------------
+    const publicRt = new ec2.CfnRouteTable(this, 'PublicRT', {
+      vpcId: vpc.ref,
+      tags: [{ key: 'Name', value: `${project}-${env}-public-rt-${region}` }],
+    });
+
+    const privateRt = new ec2.CfnRouteTable(this, 'PrivateRT', {
+      vpcId: vpc.ref,
+      tags: [{ key: 'Name', value: `${project}-${env}-private-rt-${region}` }],
+    });
+
+    // Public internet route
     new ec2.CfnRoute(this, 'PublicDefaultRoute', {
       routeTableId: publicRt.ref,
       destinationCidrBlock: '0.0.0.0/0',
       gatewayId: igw.ref,
     });
 
-    // ✅ 3. Create ONE Private Route Table
-    const privateRt = new ec2.CfnRouteTable(this, 'PrivateRouteTable', {
-      vpcId: this.vpc.vpcId,
-      tags: [
-        { key: 'Name', value: `${project}-${envName}-private-rt-${regionCode}` },
-      ],
-    });
+    // ---------------------------
+    // 4️⃣ Subnets (3 Public + 3 Private)
+    // ---------------------------
+    const azs = cdk.Stack.of(this).availabilityZones;
 
-    // ✅ 4. Associate ALL Public Subnets to Public RT
-    this.vpc.publicSubnets.forEach((subnet, index) => {
+    for (let i = 0; i < 3; i++) {
+      // Public Subnet
+      const publicSubnet = new ec2.CfnSubnet(this, `PublicSubnet${i + 1}`, {
+        vpcId: vpc.ref,
+        cidrBlock: `10.10.${i}.0/24`,
+        availabilityZone: azs[i],
+        mapPublicIpOnLaunch: true,
+        tags: [
+          { key: 'Name', value: `${project}-${env}-pub-${i + 1}-${region}` },
+        ],
+      });
       new ec2.CfnSubnetRouteTableAssociation(
         this,
-        `PublicSubnetAssoc${index + 1}`,
+        `PublicAssoc${i + 1}`,
         {
-          subnetId: subnet.subnetId,
+          subnetId: publicSubnet.ref,
           routeTableId: publicRt.ref,
         }
       );
-    });
 
-    // ✅ 5. Associate ALL Private Subnets to Private RT
-    this.vpc.privateSubnets.forEach((subnet, index) => {
+      // Private Subnet
+      const privateSubnet = new ec2.CfnSubnet(this, `PrivateSubnet${i + 1}`, {
+        vpcId: vpc.ref,
+        cidrBlock: `10.10.${i + 10}.0/24`,
+        availabilityZone: azs[i],
+        tags: [
+          { key: 'Name', value: `${project}-${env}-pvt-${i + 1}-${region}` },
+        ],
+      });
+
       new ec2.CfnSubnetRouteTableAssociation(
         this,
-        `PrivateSubnetAssoc${index + 1}`,
+        `PrivateAssoc${i + 1}`,
         {
-          subnetId: subnet.subnetId,
+          subnetId: privateSubnet.ref,
           routeTableId: privateRt.ref,
         }
       );
-    });
+    }
 
-    // ✅ Outputs
-    new cdk.CfnOutput(this, 'VpcId', {
-      value: this.vpc.vpcId,
-    });
+    new cdk.CfnOutput(this, 'VpcId', { value: vpc.ref });
   }
 }
