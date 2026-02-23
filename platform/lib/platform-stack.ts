@@ -70,8 +70,11 @@ export class PlatformStack extends cdk.Stack {
     const listener = alb.addListener('HttpListener', {
       port: 80,
       open: true,
+       defaultAction: elbv2.ListenerAction.fixedResponse(200, {
+       contentType: 'text/plain',
+       messageBody: 'Platform ALB Ready',
+    }),
     });
-
     // --------------------------------------------------
     // 7️⃣ Outputs
     // --------------------------------------------------
